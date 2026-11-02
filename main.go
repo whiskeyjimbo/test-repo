@@ -10,7 +10,7 @@ var version = "dev"
 
 // Greeting returns the message the program prints.
 func Greeting(name string) string {
-	return "Hello, " + name
+        return "Hello, " + name
 }
 
 func main() {
