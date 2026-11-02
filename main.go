@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 // version is overridden at build time with -ldflags "-X main.version=<v>".
@@ -23,6 +24,7 @@ func Greeting(name string) string {
 }
 
 func main() {
+	name := ""
 	for _, arg := range os.Args[1:] {
 		if arg == "--help" {
 			fmt.Print(usage)
@@ -32,6 +34,12 @@ func main() {
 			fmt.Println(version)
 			return
 		}
+		if v, ok := strings.CutPrefix(arg, "--name="); ok && name == "" {
+			name = v
+		}
 	}
-	fmt.Println(Greeting("world"))
+	if name == "" {
+		name = "world"
+	}
+	fmt.Println(Greeting(name))
 }
