@@ -33,8 +33,9 @@ greeting = Good morning
 Keys:
 
 - `greeting`: the greeting word. Empty or absent means `Hello`.
-- `name`: planned (story 2), not yet supported. Until then it is an unknown key.
-  Planned precedence: first non-empty `--name=` > non-empty `name` key > `world`.
+- `name`: who to greet. Empty or absent means it is not set.
+  Precedence: first non-empty `--name=` > non-empty `name` key > `world`.
+  A valid `--name` does not skip the file: it is still read and validated.
 
 The file is read only when a greeting will print: `--help`, `--version` and
 `--quiet` never open it.
@@ -58,6 +59,9 @@ $ printf 'greeting=Hi\n' > c.cfg
 $ test-repo --config=c.cfg            # stdout: Hi, world   exit 0
 $ test-repo --config=c.cfg --name=Ann # stdout: Hi, Ann     exit 0
 $ test-repo --config=c.cfg --shout    # stdout: HI, WORLD   exit 0
+$ printf 'greeting=Hi\nname=Ann\n' > n.cfg
+$ test-repo --config=n.cfg            # stdout: Hi, Ann     exit 0
+$ test-repo --config=n.cfg --name=Bob # stdout: Hi, Bob     exit 0
 $ test-repo --config=nope             # stderr: test-repo: config nope: no such file or directory   exit 1
 $ test-repo --config=nope --help      # usage, exit 0 (file not opened)
 ```
