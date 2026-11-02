@@ -26,6 +26,7 @@ func Greeting(name string) string {
 func main() {
 	name := ""
 	shout := false
+	quiet := false
 	for _, arg := range os.Args[1:] {
 		if arg == "--help" {
 			fmt.Print(usage)
@@ -35,12 +36,18 @@ func main() {
 			fmt.Println(version)
 			return
 		}
+		if arg == "--quiet" {
+			quiet = true
+		}
 		if arg == "--shout" {
 			shout = true
 		}
 		if v, ok := strings.CutPrefix(arg, "--name="); ok && name == "" {
 			name = v
 		}
+	}
+	if quiet {
+		return
 	}
 	if name == "" {
 		name = "world"
