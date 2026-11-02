@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"strings"
 )
@@ -23,8 +25,50 @@ func Greeting(name string) string {
         return "Hello, " + name
 }
 
+// loadGreeting reads and validates the config file at path and returns the
+// greeting word it sets ("Hello" when unset or empty). Errors never echo the
+// file's contents.
+func loadGreeting(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		var pe *fs.PathError
+		if errors.As(err, &pe) {
+			return "", pe.Err
+		}
+		return "", err
+	}
+	greeting, seen := "", false
+	for i, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		key, val, ok := strings.Cut(line, "=")
+		if !ok {
+			return "", fmt.Errorf("line %d: expected key=value", i+1)
+		}
+		key = strings.TrimSpace(key)
+		if key == "" {
+			return "", fmt.Errorf("line %d: empty key", i+1)
+		}
+		if key != "greeting" {
+			return "", fmt.Errorf("line %d: unknown key", i+1)
+		}
+		if seen {
+			return "", fmt.Errorf("line %d: repeated key", i+1)
+		}
+		seen = true
+		greeting = strings.TrimSpace(val)
+	}
+	if greeting == "" {
+		greeting = "Hello"
+	}
+	return greeting, nil
+}
+
 func main() {
 	name := ""
+	config := ""
 	shout := false
 	quiet := false
 	for _, arg := range os.Args[1:] {
@@ -45,14 +89,26 @@ func main() {
 		if v, ok := strings.CutPrefix(arg, "--name="); ok && name == "" {
 			name = v
 		}
+		if v, ok := strings.CutPrefix(arg, "--config="); ok && config == "" {
+			config = v
+		}
 	}
 	if quiet {
 		return
 	}
+	greeting := "Hello"
+	if config != "" {
+		g, err := loadGreeting(config)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "test-repo: config %s: %v\n", config, err)
+			os.Exit(1)
+		}
+		greeting = g
+	}
 	if name == "" {
 		name = "world"
 	}
-	out := Greeting(name)
+	out := greeting + strings.TrimPrefix(Greeting(name), "Hello")
 	if shout {
 		out = strings.ToUpper(out)
 	}
