@@ -107,8 +107,8 @@ listening on 127.0.0.1:PORT
 ```
 
 Endpoints. Every body is one line of JSON ending in a newline, with
-`Content-Type: application/json`. `<`, `>` and `&` in a name come out as
-`<`, `>` and `&`.
+`Content-Type: application/json`. `<`, `>` and `&` in a name are written as
+JSON unicode escapes (the `json.Encoder` default), never as raw characters.
 
 | Request | Status | Body |
 | --- | --- | --- |
