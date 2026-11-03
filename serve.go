@@ -18,7 +18,7 @@ import (
 	"unicode/utf8"
 )
 
-const serveUsage = "Usage: test-repo serve --port=N [--data=FILE]\n"
+const serveUsage = "Usage: test-repo serve --port=N [--data=FILE] [--rate=N]\n"
 
 // maxNameBytes is the longest name /greet accepts, in bytes after decoding.
 const maxNameBytes = 256
@@ -30,6 +30,7 @@ const shutdownTimeout = 5 * time.Second
 type serveConfig struct {
 	port int
 	data string // counts file; "" keeps counts in memory only
+	rate int    // requests per second per client
 }
 
 // errServeHelp is returned by parseServeArgs when "--help" is given.
@@ -43,8 +44,8 @@ func parseServeArgs(args []string) (serveConfig, error) {
 			return serveConfig{}, errServeHelp
 		}
 	}
-	var cfg serveConfig
-	seenPort, seenData := false, false
+	cfg := serveConfig{rate: defaultRate}
+	seenPort, seenData, seenRate := false, false, false
 	for _, arg := range args {
 		if v, ok := strings.CutPrefix(arg, "--port="); ok {
 			if seenPort {
@@ -65,6 +66,16 @@ func parseServeArgs(args []string) (serveConfig, error) {
 				return serveConfig{}, errors.New("--data: empty value")
 			}
 			cfg.data = v
+		} else if v, ok := strings.CutPrefix(arg, "--rate="); ok {
+			if seenRate {
+				return serveConfig{}, errors.New("repeated flag")
+			}
+			seenRate = true
+			n, ok := parseRate(v)
+			if !ok {
+				return serveConfig{}, errors.New("--rate: want an integer 1-1000000")
+			}
+			cfg.rate = n
 		} else {
 			return serveConfig{}, errors.New("unknown argument")
 		}
@@ -90,6 +101,23 @@ func parsePort(s string) (int, bool) {
 		return 0, false
 	}
 	return p, true
+}
+
+// parseRate accepts only ASCII decimal digits with a value of 1-1000000.
+func parseRate(s string) (int, bool) {
+	if s == "" || len(s) > 7 {
+		return 0, false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return 0, false
+		}
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 1 || n > 1000000 {
+		return 0, false
+	}
+	return n, true
 }
 
 // runServe runs "test-repo serve" with args and returns the exit code.
@@ -118,7 +146,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "test-repo: serve: %v\n", err)
 		return 1
 	}
-	return serveOn(ln, newHandlerWith(st), stdout, stderr, stop, shutdownTimeout)
+	return serveOn(ln, limitHandler(newHandlerWith(st), newLimiter(cfg.rate, time.Now)), stdout, stderr, stop, shutdownTimeout)
 }
 
 // serveOn announces ln, serves h on it until stop fires, then shuts down,

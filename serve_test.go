@@ -12,7 +12,7 @@ import (
 )
 
 // wantServeUsage is the serve usage line. Every serve help assertion uses it.
-const wantServeUsage = "Usage: test-repo serve --port=N [--data=FILE]\n"
+const wantServeUsage = "Usage: test-repo serve --port=N [--data=FILE] [--rate=N]\n"
 
 // bs is a backslash, kept out of literals so JSON escapes stay readable.
 const bs = "\x5c"

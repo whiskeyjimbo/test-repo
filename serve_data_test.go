@@ -328,7 +328,7 @@ func TestServeDataArgs(t *testing.T) {
 		{[]string{"--port=0", "--data=a", "--data=b"}, "repeated flag"},
 		{[]string{"--port=0", "--data=a", "--data="}, "repeated flag"},
 		{[]string{"--data=a"}, "--port is required"},
-		{[]string{"--port=0", "--rate=5"}, "unknown argument"},
+		{[]string{"--port=0", "--bogus=5"}, "unknown argument"},
 		{[]string{"--port=0", "--data", "a"}, "unknown argument"},
 	} {
 		if _, err := parseServeArgs(tc.args); err == nil || err.Error() != tc.want {
@@ -351,7 +351,7 @@ func TestServeDataArgs(t *testing.T) {
 		}
 	}
 	check(t, bin, []string{"serve", "--data=a", "--help"}, wantServeUsage)
-	if wantServeUsage != "Usage: test-repo serve --port=N [--data=FILE]\n" {
+	if wantServeUsage != "Usage: test-repo serve --port=N [--data=FILE] [--rate=N]\n" {
 		t.Errorf("usage constant is %q", wantServeUsage)
 	}
 }

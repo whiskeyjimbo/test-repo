@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -31,7 +32,12 @@ type serveProc struct {
 // "listening on" line. Every process-level serve test starts here.
 func startServe(t *testing.T, bin string, extra ...string) *serveProc {
 	t.Helper()
-	cmd := exec.Command(bin, append([]string{"serve", "--port=0"}, extra...)...)
+	args := append([]string{"serve", "--port=0"}, extra...)
+	// Opt out of rate limiting unless the test sets its own --rate.
+	if !slices.ContainsFunc(extra, func(a string) bool { return strings.HasPrefix(a, "--rate=") }) {
+		args = append(args, "--rate=1000000")
+	}
+	cmd := exec.Command(bin, args...)
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
