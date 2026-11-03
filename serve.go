@@ -18,7 +18,7 @@ import (
 	"unicode/utf8"
 )
 
-const serveUsage = "Usage: test-repo serve --port=N\n"
+const serveUsage = "Usage: test-repo serve --port=N [--data=FILE]\n"
 
 // maxNameBytes is the longest name /greet accepts, in bytes after decoding.
 const maxNameBytes = 256
@@ -29,6 +29,7 @@ const shutdownTimeout = 5 * time.Second
 // serveConfig is the result of parsing the serve arguments.
 type serveConfig struct {
 	port int
+	data string // counts file; "" keeps counts in memory only
 }
 
 // errServeHelp is returned by parseServeArgs when "--help" is given.
@@ -43,21 +44,30 @@ func parseServeArgs(args []string) (serveConfig, error) {
 		}
 	}
 	var cfg serveConfig
-	seenPort := false
+	seenPort, seenData := false, false
 	for _, arg := range args {
-		v, ok := strings.CutPrefix(arg, "--port=")
-		if !ok {
+		if v, ok := strings.CutPrefix(arg, "--port="); ok {
+			if seenPort {
+				return serveConfig{}, errors.New("repeated flag")
+			}
+			seenPort = true
+			p, ok := parsePort(v)
+			if !ok {
+				return serveConfig{}, errors.New("--port: want an integer 0-65535")
+			}
+			cfg.port = p
+		} else if v, ok := strings.CutPrefix(arg, "--data="); ok {
+			if seenData {
+				return serveConfig{}, errors.New("repeated flag")
+			}
+			seenData = true
+			if v == "" {
+				return serveConfig{}, errors.New("--data: empty value")
+			}
+			cfg.data = v
+		} else {
 			return serveConfig{}, errors.New("unknown argument")
 		}
-		if seenPort {
-			return serveConfig{}, errors.New("repeated flag")
-		}
-		seenPort = true
-		p, ok := parsePort(v)
-		if !ok {
-			return serveConfig{}, errors.New("--port: want an integer 0-65535")
-		}
-		cfg.port = p
 	}
 	if !seenPort {
 		return serveConfig{}, errors.New("--port is required")
@@ -93,6 +103,11 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "test-repo: serve: %v\n", err)
 		return 1
 	}
+	st, err := loadStore(cfg.data)
+	if err != nil {
+		fmt.Fprintf(stderr, "test-repo: serve: data %s: %v\n", cfg.data, err)
+		return 1
+	}
 	// Catch signals before announcing the port, so a signal sent as soon
 	// as the "listening on" line appears is never fatal.
 	stop := make(chan os.Signal, 1)
@@ -103,7 +118,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "test-repo: serve: %v\n", err)
 		return 1
 	}
-	return serveOn(ln, newHandler(), stdout, stderr, stop, shutdownTimeout)
+	return serveOn(ln, newHandlerWith(st), stdout, stderr, stop, shutdownTimeout)
 }
 
 // serveOn announces ln, serves h on it until stop fires, then shuts down,
@@ -131,15 +146,23 @@ func serveOn(ln net.Listener, h http.Handler, stdout, stderr io.Writer, stop <-c
 // newHandler returns the server's routes. Unknown paths get 404 and wrong
 // methods on a known path get 405, both from http.ServeMux.
 func newHandler() http.Handler {
+	return newHandlerWith(&store{counts: map[string]int64{}})
+}
+
+// newHandlerWith is newHandler counting greetings in st.
+func newHandlerWith(st *store) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
-	mux.HandleFunc("GET /greet", handleGreet)
+	mux.HandleFunc("GET /greet", func(w http.ResponseWriter, r *http.Request) { handleGreet(st, w, r) })
+	mux.HandleFunc("GET /stats", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"counts": st.snapshot()})
+	})
 	return mux
 }
 
-func handleGreet(w http.ResponseWriter, r *http.Request) {
+func handleGreet(st *store, w http.ResponseWriter, r *http.Request) {
 	q, err := url.ParseQuery(r.URL.RawQuery)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid query"})
@@ -152,6 +175,10 @@ func handleGreet(w http.ResponseWriter, r *http.Request) {
 	}
 	if name == "" {
 		name = "world"
+	}
+	if err := st.add(name); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "storage failed"})
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"greeting": Greeting(name)})
 }
