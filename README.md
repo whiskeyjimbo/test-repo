@@ -5,10 +5,13 @@ Prints a greeting.
 ## Usage
 
 ```
-test-repo [--help] [--version] [--name=NAME] [--shout] [--quiet] [--config=FILE] [--lang=CODE]
+test-repo [--help] [--version] [--version-json] [--name=NAME] [--shout] [--quiet] [--config=FILE] [--lang=CODE]
 ```
 
 - `--help` / `--version`: print usage / version and exit 0.
+- `--version-json`: print `{"version":"<version>"}` (JSON-escaped, one line) and
+  exit 0. Like `--help` and `--version`, the first of the three wins and
+  nothing else is read.
 - `--name=NAME`: who to greet (default `world`). First non-empty value wins.
 - `--shout`: uppercase the output.
 - `--quiet`: print nothing, exit 0.
