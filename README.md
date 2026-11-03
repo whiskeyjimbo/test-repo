@@ -5,7 +5,7 @@ Prints a greeting.
 ## Usage
 
 ```
-test-repo [--help] [--version] [--name=NAME] [--shout] [--quiet] [--config=FILE]
+test-repo [--help] [--version] [--name=NAME] [--shout] [--quiet] [--config=FILE] [--lang=CODE]
 ```
 
 - `--help` / `--version`: print usage / version and exit 0.
@@ -15,6 +15,16 @@ test-repo [--help] [--version] [--name=NAME] [--shout] [--quiet] [--config=FILE]
 - `--config=FILE`: read settings from FILE. Exact prefix `--config=`; the first
   non-empty value wins. An empty value counts as not given, and `--config FILE`
   (separate argument) is ignored.
+- `--lang=CODE`: greeting language. Codes are exact and case-sensitive:
+  `en` (`Hello`) and `es` (`Hola`). Only the greeting word changes; the name
+  stays as is. Exact prefix `--lang=`; the first non-empty value wins and later
+  ones are not checked. An empty value counts as not given, and `--lang CODE`
+  (separate argument) is ignored. It beats the config file's `greeting` key
+  (the file is still read and validated).
+  Any other code is an error: nothing on stdout, stderr exactly
+  `test-repo: lang: unknown code, want en or es`, exit 1 (the code is never
+  echoed). The code is checked before the config file is opened, so it wins
+  over a bad file. `--help`, `--version` and `--quiet` skip the check.
 
 ## Config file
 
@@ -64,4 +74,9 @@ $ test-repo --config=n.cfg            # stdout: Hi, Ann     exit 0
 $ test-repo --config=n.cfg --name=Bob # stdout: Hi, Bob     exit 0
 $ test-repo --config=nope             # stderr: test-repo: config nope: no such file or directory   exit 1
 $ test-repo --config=nope --help      # usage, exit 0 (file not opened)
+$ test-repo --lang=es                 # stdout: Hola, world exit 0
+$ test-repo --lang=es --shout         # stdout: HOLA, WORLD exit 0
+$ test-repo --config=c.cfg --lang=es  # stdout: Hola, world exit 0
+$ test-repo --lang=fr                 # stderr: test-repo: lang: unknown code, want en or es   exit 1
+$ test-repo --lang=fr --help          # usage, exit 0 (code not checked)
 ```

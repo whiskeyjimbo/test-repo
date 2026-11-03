@@ -78,6 +78,7 @@ func loadConfig(path string) (string, string, error) {
 func main() {
 	name := ""
 	config := ""
+	lang := ""
 	shout := false
 	quiet := false
 	for _, arg := range os.Args[1:] {
@@ -101,9 +102,17 @@ func main() {
 		if v, ok := strings.CutPrefix(arg, "--config="); ok && config == "" {
 			config = v
 		}
+		if v, ok := strings.CutPrefix(arg, "--lang="); ok && lang == "" {
+			lang = v
+		}
 	}
 	if quiet {
 		return
+	}
+	words := map[string]string{"en": "Hello", "es": "Hola"}
+	if _, ok := words[lang]; lang != "" && !ok {
+		fmt.Fprintln(os.Stderr, "test-repo: lang: unknown code, want en or es")
+		os.Exit(1)
 	}
 	greeting := "Hello"
 	if config != "" {
@@ -116,6 +125,9 @@ func main() {
 		if name == "" {
 			name = n
 		}
+	}
+	if lang != "" {
+		greeting = words[lang]
 	}
 	if name == "" {
 		name = "world"
