@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -88,6 +89,12 @@ func main() {
 		}
 		if arg == "--version" {
 			fmt.Println(version)
+			return
+		}
+		if arg == "--version-json" {
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetEscapeHTML(false)
+			enc.Encode(map[string]string{"version": version})
 			return
 		}
 		if arg == "--quiet" {
