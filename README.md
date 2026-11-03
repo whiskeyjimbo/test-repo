@@ -87,7 +87,7 @@ $ test-repo --lang=fr --help          # usage, exit 0 (code not checked)
 ## serve
 
 ```
-test-repo serve --port=N
+test-repo serve --port=N [--data=FILE]
 ```
 
 Runs a small HTTP server. `serve` is a subcommand only when it is the very
@@ -96,8 +96,10 @@ first argument, spelled exactly `serve`; anywhere else (`--name=Ann serve`,
 
 - `--port=N`: required. Decimal digits only, 0-65535; `0` lets the OS pick a
   free port. Exact prefix `--port=` (`--port N` is an error).
-- `--help` anywhere after `serve`: print `Usage: test-repo serve --port=N` and
-  exit 0. Nothing else is checked.
+- `--data=FILE`: optional. Keep the greeting counts in FILE (see below). Exact
+  prefix `--data=`; an empty value is an error.
+- `--help` anywhere after `serve`: print
+  `Usage: test-repo serve --port=N [--data=FILE]` and exit 0. Nothing else is checked.
 
 The server listens on `127.0.0.1` only (no other address can be chosen), then
 prints exactly one line to stdout, with the actual port:
@@ -117,11 +119,40 @@ JSON unicode escapes (the `json.Encoder` default), never as raw characters.
 | `GET /greet` or `GET /greet?name=` | 200 | `{"greeting":"Hello, world"}` |
 | `GET /greet?name=%zz` (query does not parse) | 400 | `{"error":"invalid query"}` |
 | `GET /greet?name=%FF` (not UTF-8, or over 256 bytes) | 400 | `{"error":"invalid name"}` |
+| `GET /stats` | 200 | `{"counts":{"Ann":2,"world":1}}` (keys sorted; `{"counts":{}}` before any greeting) |
 | any other path | 404 | |
-| another method on `/healthz` or `/greet` | 405 | |
+| another method on `/healthz`, `/greet` or `/stats` | 405 | |
 
 The name is the first `name` value, URL-decoded. It always uses the plain
 greeting (`--lang`, `--shout` and config files do not apply).
+
+### Counting and `--data`
+
+Each `/greet` that answers 200 adds 1 to the count for the name it greeted
+(`world` when none was given); a `HEAD /greet` that answers 200 counts too.
+400, 404 and 405 responses add nothing. Without `--data` the counts live in
+memory and start empty on every run.
+
+With `--data=FILE` the counts are loaded before the server listens and the
+file is rewritten (to a temp file in the same directory, then renamed over
+FILE, so a reader never sees a partial file) before each 200 is sent:
+
+```
+{"counts":{"Ann":2,"world":1}}
+```
+
+- A missing FILE starts with no counts and is created on the first greeting.
+- A valid file is one object with the single key `counts`, mapping strings to
+  non-negative integers, with only whitespace after it. Anything else (empty
+  file, `null`, extra keys, `1.5`, `-1`, trailing data) is refused with
+  `test-repo: serve: data FILE: invalid`, exit 1, and FILE is left untouched.
+  A file that cannot be read prints `test-repo: serve: data FILE: <OS error>`.
+  File contents are never echoed.
+- If the write fails while running, `/greet` answers 500
+  `{"error":"storage failed"}`, the count is not kept and the server keeps
+  running.
+- Run one process per file: there is no file locking, so two servers sharing a
+  FILE overwrite each other's counts.
 
 On SIGTERM or SIGINT the server stops accepting connections, lets in-flight
 requests finish for up to 5 seconds, and exits 0 with nothing on stderr. If
@@ -136,5 +167,6 @@ $ test-repo serve                       # test-repo: serve: --port is required
 $ test-repo serve --port=x              # test-repo: serve: --port: want an integer 0-65535
 $ test-repo serve --port=0 --port=0     # test-repo: serve: repeated flag
 $ test-repo serve --port=0 --bogus      # test-repo: serve: unknown argument
+$ test-repo serve --port=0 --data=      # test-repo: serve: --data: empty value
 $ test-repo serve --port=8080           # port in use: test-repo: serve: listen tcp 127.0.0.1:8080: bind: address already in use
 ```
