@@ -87,7 +87,7 @@ $ test-repo --lang=fr --help          # usage, exit 0 (code not checked)
 ## serve
 
 ```
-test-repo serve --port=N [--data=FILE]
+test-repo serve --port=N [--data=FILE] [--rate=N]
 ```
 
 Runs a small HTTP server. `serve` is a subcommand only when it is the very
@@ -98,8 +98,10 @@ first argument, spelled exactly `serve`; anywhere else (`--name=Ann serve`,
   free port. Exact prefix `--port=` (`--port N` is an error).
 - `--data=FILE`: optional. Keep the greeting counts in FILE (see below). Exact
   prefix `--data=`; an empty value is an error.
+- `--rate=N`: optional, default 10. Requests per second allowed per client, 1-1000000,
+  decimal digits only (see "Rate limiting"). Exact prefix `--rate=`.
 - `--help` anywhere after `serve`: print
-  `Usage: test-repo serve --port=N [--data=FILE]` and exit 0. Nothing else is checked.
+  `Usage: test-repo serve --port=N [--data=FILE] [--rate=N]` and exit 0. Nothing else is checked.
 
 The server listens on `127.0.0.1` only (no other address can be chosen), then
 prints exactly one line to stdout, with the actual port:
@@ -120,17 +122,29 @@ JSON unicode escapes (the `json.Encoder` default), never as raw characters.
 | `GET /greet?name=%zz` (query does not parse) | 400 | `{"error":"invalid query"}` |
 | `GET /greet?name=%FF` (not UTF-8, or over 256 bytes) | 400 | `{"error":"invalid name"}` |
 | `GET /stats` | 200 | `{"counts":{"Ann":2,"world":1}}` (keys sorted; `{"counts":{}}` before any greeting) |
+| more than `--rate` requests per second from one client | 429 | `{"error":"rate limited"}` with `Retry-After: 1` |
 | any other path | 404 | |
 | another method on `/healthz`, `/greet` or `/stats` | 405 | |
 
 The name is the first `name` value, URL-decoded. It always uses the plain
 greeting (`--lang`, `--shout` and config files do not apply).
 
+### Rate limiting
+
+Each client has a token bucket holding `--rate` tokens, refilled at `--rate`
+tokens per second up to that cap. A client is the host part of the connection's
+address (the port is dropped; IPv4 and IPv6 hosts are separate clients).
+`X-Forwarded-For` and other proxy headers are ignored. Every request except
+path `/healthz` takes one token, whatever its method or status, so `HEAD`,
+`/stats`, 404 and 400 responses count too. With no token the answer is 429
+`{"error":"rate limited"}` with `Retry-After: 1`, and nothing is counted.
+`/healthz` is never limited. Buckets are kept in memory for the life of the process.
+
 ### Counting and `--data`
 
 Each `/greet` that answers 200 adds 1 to the count for the name it greeted
 (`world` when none was given); a `HEAD /greet` that answers 200 counts too.
-400, 404 and 405 responses add nothing. Without `--data` the counts live in
+400, 404, 405 and 429 responses add nothing. Without `--data` the counts live in
 memory and start empty on every run.
 
 With `--data=FILE` the counts are loaded before the server listens and the
@@ -168,5 +182,6 @@ $ test-repo serve --port=x              # test-repo: serve: --port: want an inte
 $ test-repo serve --port=0 --port=0     # test-repo: serve: repeated flag
 $ test-repo serve --port=0 --bogus      # test-repo: serve: unknown argument
 $ test-repo serve --port=0 --data=      # test-repo: serve: --data: empty value
+$ test-repo serve --port=0 --rate=0     # test-repo: serve: --rate: want an integer 1-1000000
 $ test-repo serve --port=8080           # port in use: test-repo: serve: listen tcp 127.0.0.1:8080: bind: address already in use
 ```
