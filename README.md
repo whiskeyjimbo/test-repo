@@ -83,3 +83,58 @@ $ test-repo --config=c.cfg --lang=es  # stdout: Hola, world exit 0
 $ test-repo --lang=fr                 # stderr: test-repo: lang: unknown code, want en or es   exit 1
 $ test-repo --lang=fr --help          # usage, exit 0 (code not checked)
 ```
+
+## serve
+
+```
+test-repo serve --port=N
+```
+
+Runs a small HTTP server. `serve` is a subcommand only when it is the very
+first argument, spelled exactly `serve`; anywhere else (`--name=Ann serve`,
+`SERVE`, `--help serve`) the greeting CLI runs as usual.
+
+- `--port=N`: required. Decimal digits only, 0-65535; `0` lets the OS pick a
+  free port. Exact prefix `--port=` (`--port N` is an error).
+- `--help` anywhere after `serve`: print `Usage: test-repo serve --port=N` and
+  exit 0. Nothing else is checked.
+
+The server listens on `127.0.0.1` only (no other address can be chosen), then
+prints exactly one line to stdout, with the actual port:
+
+```
+listening on 127.0.0.1:PORT
+```
+
+Endpoints. Every body is one line of JSON ending in a newline, with
+`Content-Type: application/json`. `<`, `>` and `&` in a name are written as
+JSON unicode escapes (the `json.Encoder` default), never as raw characters.
+
+| Request | Status | Body |
+| --- | --- | --- |
+| `GET /healthz` | 200 | `{"status":"ok"}` |
+| `GET /greet?name=Ann` | 200 | `{"greeting":"Hello, Ann"}` |
+| `GET /greet` or `GET /greet?name=` | 200 | `{"greeting":"Hello, world"}` |
+| `GET /greet?name=%zz` (query does not parse) | 400 | `{"error":"invalid query"}` |
+| `GET /greet?name=%FF` (not UTF-8, or over 256 bytes) | 400 | `{"error":"invalid name"}` |
+| any other path | 404 | |
+| another method on `/healthz` or `/greet` | 405 | |
+
+The name is the first `name` value, URL-decoded. It always uses the plain
+greeting (`--lang`, `--shout` and config files do not apply).
+
+On SIGTERM or SIGINT the server stops accepting connections, lets in-flight
+requests finish for up to 5 seconds, and exits 0 with nothing on stderr. If
+requests are still running after 5 seconds it prints
+`test-repo: serve: shutdown: <error>` and exits 1.
+
+Errors print nothing on stdout, exactly one line on stderr and exit 1.
+Command-line values are never echoed.
+
+```
+$ test-repo serve                       # test-repo: serve: --port is required
+$ test-repo serve --port=x              # test-repo: serve: --port: want an integer 0-65535
+$ test-repo serve --port=0 --port=0     # test-repo: serve: repeated flag
+$ test-repo serve --port=0 --bogus      # test-repo: serve: unknown argument
+$ test-repo serve --port=8080           # port in use: test-repo: serve: listen tcp 127.0.0.1:8080: bind: address already in use
+```
