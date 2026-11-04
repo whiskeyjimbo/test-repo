@@ -136,6 +136,12 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "test-repo: serve: data %s: %v\n", cfg.data, err)
 		return 1
 	}
+	if cfg.data != "" {
+		if err := prepareDataDir(cfg.data); err != nil {
+			fmt.Fprintf(stderr, "test-repo: serve: data %s: %v\n", cfg.data, err)
+			return 1
+		}
+	}
 	// Catch signals before announcing the port, so a signal sent as soon
 	// as the "listening on" line appears is never fatal.
 	stop := make(chan os.Signal, 1)
