@@ -9,8 +9,66 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 )
+
+// prepareDataDir runs after loadStore accepts path. It checks that a file
+// can be created in path's folder, then removes the leftover temp files
+// (<base>.tmp<digits>) of earlier runs. Errors are unwrapped to the OS error.
+func prepareDataDir(path string) error {
+	if err := prepareDataDirErr(path); err != nil {
+		var pe *fs.PathError
+		if errors.As(err, &pe) {
+			err = pe.Err
+		}
+		return err
+	}
+	return nil
+}
+
+func prepareDataDirErr(path string) error {
+	dir, base := filepath.Dir(path), filepath.Base(path)
+	probe, err := os.CreateTemp(dir, base+".tmp*")
+	if err != nil {
+		return err
+	}
+	probe.Close()
+	if err := os.Remove(probe.Name()); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if !isStaleTemp(e.Name(), base) {
+			continue
+		}
+		full := filepath.Join(dir, e.Name())
+		if fi, err := os.Lstat(full); err != nil || !fi.Mode().IsRegular() {
+			continue
+		}
+		if err := os.Remove(full); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// isStaleTemp reports whether name is exactly base + ".tmp" + ASCII digits.
+func isStaleTemp(name, base string) bool {
+	digits, ok := strings.CutPrefix(name, base+".tmp")
+	if !ok || digits == "" {
+		return false
+	}
+	for i := 0; i < len(digits); i++ {
+		if digits[i] < '0' || digits[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
 
 // errInvalidData is returned for a data file that is not valid.
 var errInvalidData = errors.New("invalid")
