@@ -9,6 +9,9 @@ import (
 
 const defaultRate = 10
 
+// sweepInterval is how often, in limiter clock time, allow drops idle buckets.
+const sweepInterval = time.Minute
+
 // bucket is one client's token bucket: tokens whole tokens, refilled from
 // last in whole steps of the limiter's interval.
 type bucket struct {
@@ -25,8 +28,11 @@ type limiter struct {
 	interval time.Duration
 	now      func() time.Time
 
-	mu      sync.Mutex
-	clients map[string]*bucket
+	sweepInterval time.Duration
+
+	mu        sync.Mutex
+	clients   map[string]*bucket
+	lastSweep time.Time
 }
 
 // newLimiter returns a limiter for rate requests per second per client that
@@ -37,6 +43,8 @@ func newLimiter(rate int, now func() time.Time) *limiter {
 		interval: time.Second / time.Duration(rate),
 		now:      now,
 		clients:  map[string]*bucket{},
+
+		sweepInterval: sweepInterval,
 	}
 }
 
@@ -46,6 +54,9 @@ func (l *limiter) allow(client string) bool {
 	t := l.now()
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.lastSweep.IsZero() || t.Sub(l.lastSweep) >= l.sweepInterval {
+		l.sweep(t)
+	}
 	b, ok := l.clients[client]
 	if !ok {
 		b = &bucket{tokens: l.rate, last: t}
@@ -66,6 +77,19 @@ func (l *limiter) allow(client string) bool {
 	}
 	b.tokens--
 	return true
+}
+
+// sweep forgets buckets idle for a full refill period at t: such a bucket
+// would refill to full on its next request, exactly like a new one. The
+// caller holds l.mu.
+func (l *limiter) sweep(t time.Time) {
+	l.lastSweep = t
+	idle := time.Duration(l.rate) * l.interval
+	for k, b := range l.clients {
+		if t.Sub(b.last) >= idle {
+			delete(l.clients, k)
+		}
+	}
 }
 
 // clientIP is the host part of the connection's remote address. Proxy

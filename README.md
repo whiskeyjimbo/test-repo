@@ -138,7 +138,8 @@ address (the port is dropped; IPv4 and IPv6 hosts are separate clients).
 path `/healthz` takes one token, whatever its method or status, so `HEAD`,
 `/stats`, 404 and 400 responses count too. With no token the answer is 429
 `{"error":"rate limited"}` with `Retry-After: 1`, and nothing is counted.
-`/healthz` is never limited. Buckets are kept in memory for the life of the process.
+`/healthz` is never limited. A bucket that has refilled to full is forgotten, and a client that comes
+back starts with a full bucket, which is exactly what it would have had.
 
 ### Counting and `--data`
 
@@ -162,11 +163,17 @@ FILE, so a reader never sees a partial file) before each 200 is sent:
   `test-repo: serve: data FILE: invalid`, exit 1, and FILE is left untouched.
   A file that cannot be read prints `test-repo: serve: data FILE: <OS error>`.
   File contents are never echoed.
+- Before listening, `serve` checks that a file can be created in FILE's folder
+  and exits 1 with `test-repo: serve: data FILE: <OS error>` if it cannot. It
+  then removes leftover temp files from earlier runs: regular files in that
+  folder named exactly `FILE.tmp<digits>` (nothing else, no subfolders). A
+  FILE that is refused leaves the folder untouched.
 - If the write fails while running, `/greet` answers 500
   `{"error":"storage failed"}`, the count is not kept and the server keeps
   running.
 - Run one process per file: there is no file locking, so two servers sharing a
-  FILE overwrite each other's counts.
+  FILE overwrite each other's counts, and startup cleanup assumes no other
+  process is writing temp files for FILE.
 
 On SIGTERM or SIGINT the server stops accepting connections, lets in-flight
 requests finish for up to 5 seconds, and exits 0 with nothing on stderr. If
@@ -183,5 +190,7 @@ $ test-repo serve --port=0 --port=0     # test-repo: serve: repeated flag
 $ test-repo serve --port=0 --bogus      # test-repo: serve: unknown argument
 $ test-repo serve --port=0 --data=      # test-repo: serve: --data: empty value
 $ test-repo serve --port=0 --rate=0     # test-repo: serve: --rate: want an integer 1-1000000
+$ test-repo serve --port=0 --data=/no/such/dir/d.json   # test-repo: serve: data /no/such/dir/d.json: no such file or directory
+$ test-repo serve --port=0 --data=ro/d.json             # test-repo: serve: data ro/d.json: permission denied (ro is mode 0500)
 $ test-repo serve --port=8080           # port in use: test-repo: serve: listen tcp 127.0.0.1:8080: bind: address already in use
 ```
